@@ -1,88 +1,170 @@
-# MobilityTicketing: Lecture 2
+# MobilityTicketing - Compulsory Assignment 1
 
-This repository contains the completed Lecture 2 implementation for the MobilityTicketing project.
+This repository contains the work from Lectures 1–4 of the MobilityTicketing database project.
 
-The focus of Lecture 2 is database integrity: turning business rules into PostgreSQL constraints and demonstrating that valid writes succeed while invalid writes are rejected.
+Each lecture folder contains its own detailed README, SQL implementation and supporting documentation.
 
-## Start the database
+## Setup
 
-Requirements:
+Each lecture has its own Docker Compose configuration.
 
-- Docker Desktop with Compose
-
-Start PostgreSQL:
+Open the relevant lecture folder and run:
 
 ```bash
 docker compose up -d
+docker compose ps
 ```
 
-The database is available at:
-
-- Host: `localhost`
-- Port: `5432`
-- Database: `mobility`
-- User: `mobility`
-- Password: `mobility`
-
-To recreate the database from an empty data directory:
+To reset the database:
 
 ```bash
 docker compose down -v
 docker compose up -d
 ```
 
-## Apply the integrity migration
+---
 
-```bash
-docker compose exec -T postgres psql -U mobility -d mobility < database/postgres/migrations/011_ticketing_integrity.sql
+## Lecture 1 - Relational modelling
+
+Folder:
+
+`mobilityticketing-lecture-1-starter`
+
+Main work:
+
+- relational schema
+- seed data
+- ER diagram
+- route and timetable queries
+- modelling assumptions and functional dependency
+
+Useful files:
+
+- `docs/lab.md`
+- `database/postgres/003_queries.sql`
+
+One important modelling choice is using:
+
+```text
+(route_id, stop_sequence)
 ```
 
-The migration adds database constraints for:
+as the key of `route_stops`, allowing the same stop to occur more than once on a route.
 
-- trip capacity and reserved seats
-- ticket references and validity
-- ticket codes and statuses
-- prices and currencies
-- payment references and statuses
-- validation ticket identity
-- product prices and currencies
+---
 
-## Test the constraints
+## Lecture 2 - Database integrity
 
-### Successful writes
+Folder:
 
-```bash
-docker compose exec -T postgres psql -U mobility -d mobility < database/postgres/experiments/constraints_should_succeed.sql
+`mobilityticketing-lecture-2-starter`
+
+Main work:
+
+- integrity map
+- PostgreSQL constraints
+- successful write tests
+- rejected write tests
+
+Useful files:
+
+- `docs/lab.md`
+- `docs/integrity-mape.md`
+- `database/postgres/migrations/011_ticketing_integrity.sql`
+- `database/postgres/experiments/constraints_should_succeed.sql`
+- `database/postgres/experiments/constraints_should_fail.sql`
+
+The database enforces rules such as:
+
+```text
+reserved_seats <= capacity
+price >= 0
+valid foreign keys
+unique ticket codes
+valid statuses
 ```
 
-These writes should succeed because they satisfy the database constraints.
+---
 
-### Rejected writes
+## Lecture 3 - Reporting logic
 
-```bash
-docker compose exec -T postgres psql -U mobility -d mobility < database/postgres/experiments/constraints_should_fail.sql
+Folder:
+
+`mobilityticketing-lecture-3-starter`
+
+Main work:
+
+- direct query
+- SQL function
+- materialized view
+- trigger-maintained summary
+- comparison of reporting approaches
+
+Useful files:
+
+- `docs/lab.md`
+- `docs/reporting-evidence.md`
+- `docs/responsibility-matrix.md`
+- `database/postgres/migrations/`
+
+The experiments show that direct queries and functions read current base data, while materialized views can become stale until refreshed.
+
+The trigger experiment also demonstrates the risks of hidden side effects and incomplete correction handling.
+
+---
+
+## Lecture 4 - Schema migration
+
+Folder:
+
+`mobilityticketing-lecture-4-starter`
+
+Main work:
+
+- expanding from `product_code` to `product_id`
+- old/new reader and writer compatibility
+- backfill
+- verification
+- final removal of the old reference
+
+Useful files:
+
+- `docs/lab.md`
+- `database/postgres/migrations/030_expand_product_identity.sql`
+- `database/postgres/migrations/031_backfill_ticket_product.sql`
+- `database/postgres/migrations/032_require_ticket_product.sql`
+- `database/postgres/experiments/lecture04/`
+
+The migration follows:
+
+```text
+Expand -> Backfill -> Verify -> Contract
 ```
 
-The errors in this test are expected. They demonstrate that PostgreSQL rejects data that violates CHECK, FOREIGN KEY, UNIQUE, or NOT NULL constraints.
+and preserves existing ticket prices and currencies.
 
-## Important limitations
+---
 
-The integrity migration protects individual database states, but it does not solve all business problems.
+## Two decisions worth discussing
 
-For example:
+### 1. Database constraints as the final integrity boundary
 
-- `reserved_seats <= capacity` does not by itself solve concurrent purchases of the final available seat.
-- PostgreSQL cannot guarantee that an external payment provider actually captured a payment.
-- Whether a disabled user may purchase a ticket remains a domain or transaction policy.
+Important invariants are enforced in PostgreSQL rather than relying only on application validation.
 
-These cases require additional transaction, workflow, or application logic.
+This means invalid persisted states are rejected regardless of which application or script performs the write.
 
-## Files
+### 2. Staged product identity migration
 
-- `compose.yaml`: PostgreSQL infrastructure.
-- `database/postgres/init/`: baseline schema and seed data.
-- `database/postgres/migrations/011_ticketing_integrity.sql`: integrity constraints migration.
-- `database/postgres/experiments/constraints_should_succeed.sql`: valid write tests.
-- `database/postgres/experiments/constraints_should_fail.sql`: invalid write tests.
-- `docs/integrity-map.md`: business invariants, database protection, limitations, and review evidence.
-- `docs/lab.md`: Lecture 2 assignment requirements.
+The product reference was migrated gradually instead of immediately dropping `product_code`.
+
+This allows old and new application versions to coexist while existing data is backfilled and verified.
+
+---
+
+## Limitation / open question
+
+The current constraints do not solve every concurrency problem.
+
+For example, two concurrent ticket purchases may both attempt to reserve the final available seat.
+
+This requires transaction and concurrency-control design beyond a simple row-level constraint.
